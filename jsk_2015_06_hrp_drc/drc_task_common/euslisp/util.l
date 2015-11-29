@@ -1,5 +1,7 @@
 ;; utility function
 (ros::roseus-add-msgs "std_msgs")
+(ros::roseus-add-msgs "smach_msgs")
+(ros::roseus-add-srvs "jsk_topic_tools")
 
 (defun ros-rgba (r g b a)
   (let ((color (instance std_msgs::ColorRGBA :init)))
@@ -11,8 +13,14 @@
 
 (setq *success-color* (ros-rgba 91 255 255 1.0))
 (setq *warn-color* (ros-rgba 255 202 0 1.0))
+(setq *fatal-color* (ros-rgba 230 10 10 1.0))
+(setq *select-color* (ros-rgba 150 230 100 1.0))
+(setq *wait-color* (ros-rgba 200 230 50 1.0))
+(setq *recognize-color* (ros-rgba 50 250 100 1.0))
+(setq *execute-color* (ros-rgba 230 0 230 1.0))
 (setq *unknown-color* (ros-rgba 251 221 221 1.0))
 (setq *transparent-color* (ros-rgba 0 0 0 0))
+(setq *execute-color* (ros-rgba 91 255 255 1.0))
 
 (defun xy-distance2 (coords)
   (+ (* (elt (send coords :worldpos) 0)
@@ -23,8 +31,39 @@
 (defun call-empty-service (srv)
   (let ((req (instance std_srvs::EmptyRequest :init)))
     (ros::service-call srv req)))
+(defun call-request-duration (srv time)
+  (let ((req (instance jsk_topic_tools::PassthroughDurationRequest :init)))
+    (send req :duration (ros::time time))
+    (ros::service-call srv req)))
 
 ;; topic <---> compressed message conversion
+(defun angle-vector-to-float-vector (av time length)
+  (let ((ret (instantiate float-vector length)))
+    (dotimes (i (length av))
+      (setf (elt ret i) (elt av i)))
+    (setf (elt ret (length av)) time)
+    ret)
+  )
+
+(defun float-vector-to-angle-vector (fv)
+  (let ((av (subseq fv 0 (length (send *robot* :joint-list))))
+        (time (elt fv (length (send *robot* :joint-list)))))
+    (list av time)))
+
+(defun position-to-float-vector (pos length)
+  ;; 6 parameters are filled
+  (let ((ret (instantiate float-vector length)))
+    (setf (elt ret 0) (elt pos 0))
+    (setf (elt ret 1) (elt pos 1))
+    (setf (elt ret 2) (elt pos 2))
+    ret))
+
+(defun float-vector-to-position (fv)
+  (cond ((>= (length fv) 3)
+         (subseq fv 0 3))
+        (t
+         nil)))
+
 (defun fill-coords-float-vector (coords fv start)
   (setf (elt fv (+ start 0)) (elt (send coords :worldpos) 0))
   (setf (elt fv (+ start 1)) (elt (send coords :worldpos) 1))
@@ -35,14 +74,18 @@
   )
 
 (defun coords-to-float-vector (coords length)
-  ;6 parameters are filled
+  ;; 6 parameters are filled
   (let ((ret (instantiate float-vector length)))
     (fill-coords-float-vector coords ret 0)
     ret))
 
 (defun float-vector-to-coords (fv)
-  (make-coords :pos (subseq fv 0 3)
-               :rpy (subseq fv 3 6)))
+  (cond ((>= (length fv) 6)
+         (make-coords :pos (subseq fv 0 3)
+                      :rpy (subseq fv 3 6)))
+        (t
+         nil))
+  )
 
 (defun pos-to-float-vector (pos length)
   (let ((ret (instantiate float-vector length)))
@@ -99,6 +142,28 @@
                     (make-list (- length 4) :initial-element 0))
             integer-vector)))
 
+(defun compute-centroid-of-polygon-stamped (msg)
+  "return geometry_msgs::PointStamped"
+  (let ((output (instance geometry_msgs::PointStamped :init)))
+    (send output :header (send msg :header))
+    (let ((sum (float-vector 0 0 0))
+          (point-num (length (send msg :polygon :points))))
+      (dotimes (i point-num)
+        (let ((p (elt (send msg :polygon :points) i)))
+          (setq sum (v+ sum (float-vector (send p :x) (send p :y) (send p :z))))))
+      (let ((centroid (scale (/ 1.0 point-num) sum)))
+        (send output :point :x (elt centroid 0))
+        (send output :point :y (elt centroid 1))
+        (send output :point :z (elt centroid 2)))
+      output)))
+
+(defun pose-stamped-to-point-stamped (msg)
+  (let ((point-stamped (instance geometry_msgs::PointStamped :init)))
+    (send point-stamped :header (send msg :header))
+    (send point-stamped :point :x (send msg :pose :position :x))
+    (send point-stamped :point :y (send msg :pose :position :y))
+    (send point-stamped :point :z (send msg :pose :position :z))
+    point-stamped))
 
 (defun integer-vector-to-rect-polygon-stamped (msg)
   (let ((x1 (elt (send msg :image_roi_info) 0))
@@ -236,6 +301,54 @@
         (height (elt params 7)))
     (list coords radius height)))
 
+(defun valve-params-to-float-vector             
+  (valve-params valve-grasp-mode length)
+  (let (ret)
+    (setq ret (torus-to-float-vector (elt valve-params 0) (elt valve-params 1) length))
+    (setf (elt ret 7) valve-grasp-mode)
+    ret))
+
+(defun float-vector-to-valve-params
+  (params)
+  (let ((ret (float-vector-to-torus params)))
+    (append ret (list (elt params 7)))
+    ))
+
+(defun door-params-to-float-vector
+  (door-params door-push/pull door-name door-reach-deg keep-grasp? length)
+  (let (ret)
+    (setq ret (box-to-float-vector (car door-params) (cadr door-params) length))
+    (setf (elt ret 9) door-push/pull)
+    (setf (elt ret 10) door-name)
+    (setf (elt ret 11) door-reach-deg)
+    (setf (elt ret 12) keep-grasp?)
+    ret))
+
+(defun float-vector-to-door-params
+  (params)
+  (let ((ret (float-vector-to-box params)))
+    (append ret (list (elt params 9) (elt params 10) (elt params 11) (elt params 12)))
+    ))
+
+(defun reach-until-touch-params-to-float-vector
+  (dir thre max-dist dist-step time-step rotation-axis length)
+  (let (ret)
+    (setq ret (position-to-float-vector dir length))
+    (setf (elt ret 3) thre)
+    (setf (elt ret 4) max-dist)
+    (setf (elt ret 5) dist-step)
+    (setf (elt ret 6) time-step)
+    (setf (elt ret 7) (if rotation-axis 1 0))
+    ret))
+
+(defun float-vector-to-reach-until-touch-params
+  (params)
+  (list
+   (float-vector-to-position params)
+   (elt params 3) (elt params 4) (elt params 5) (elt params 6)
+   (if (eps= (float (elt params 7)) (float 1)) t nil))
+  )
+
 ;; message handler
 (defclass narrowband-message-handler
   :super propertied-object
@@ -273,6 +386,28 @@
       (send* self :register-callback spec)))
   )
 
+(defun footstep-array->vector (footstep-array float-length integer-length)
+  (let ((footstep-coords (mapcar #'(lambda (f)
+                                     (ros::tf-pose->coords (send f :pose)))
+                                 (send footstep-array :footsteps))))
+    (let ((integer-vector-ret (instantiate integer-vector integer-length)))
+      (dotimes (i (length (send footstep-array :footsteps)))
+        (setf (elt integer-vector-ret i) (send (elt (send footstep-array :footsteps) i) :leg)))
+      (list (coords-set-to-float-vector footstep-coords float-length)
+            integer-vector-ret))))
+
+(defun vector->footstep-array (float-footsteps int-footsteps)
+  (let ((ret (instance jsk_footstep_msgs::FootstepArray :init)))
+    (let ((coords-set (float-vector-to-coords-set float-footsteps)))
+      (dotimes (i (length coords-set))
+        (let ((footstep (instance jsk_footstep_msgs::Footstep :init)))
+          (send footstep :pose (ros::coords->tf-pose (elt coords-set i)))
+          (send footstep :leg (elt int-footsteps i))
+          (send ret
+                :footsteps (append (send ret :footsteps)
+                                   (list footstep))))))
+    ret))
+
 ;; class to synchronize foreground rect topic and
 ;; background rect topic
 (defclass foreground-background-synchronizer
@@ -293,3 +428,8 @@
   `(if (null ,lst)
        (setf ,lst (list ,el))
      (nconc ,lst (list ,el))))
+
+(defun keyshot-request
+  ()
+  (call-empty-service "keyshot/snapshot/request")
+  )

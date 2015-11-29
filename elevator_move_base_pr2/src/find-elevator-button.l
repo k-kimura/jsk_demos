@@ -13,9 +13,9 @@
 (unix::sleep 1) ;; wait for TF messages
 
 (let ((frames (send *tfl* :get-frame-strings)))
-  (cond ((find "/eng2" frames :test #'string=)
+  (cond ((find "eng2" frames :test #'string=)
 	 (setq *scene* (make-eng2-scene)))
-	((find "/eng8" frames :test #'string=)
+	((find "eng8" frames :test #'string=)
 	 (setq *scene* (make-eng8-scene)))
 	(t
 	 (ros::ros-error "There is no building frame-id in TF tree.")
@@ -41,7 +41,7 @@
  (when *node-debug*
    (send *pr2* :angle-vector (send *ri* :state))
    (send *irtviewer* :draw-objects)
-   (let ((camera-coords (send *tfl* :lookup-transform "/base_footprint" "/narrow_stereo_optical_frame" (ros::time 0))))
+   (let ((camera-coords (send *tfl* :lookup-transform "base_footprint" "narrow_stereo_optical_frame" (ros::time 0))))
      (when camera-coords
        (send camera-coords :draw-on :flush t :size 200)))
    (x::window-main-one)

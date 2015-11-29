@@ -1,5 +1,5 @@
-(load "package://drc_task_common/euslisp/robot-util.l")
-(load "package://drc_task_common/euslisp/util.l")
+(require "package://drc_task_common/euslisp/robot-util.l")
+(require "package://drc_task_common/euslisp/util.l")
 
 (defun set-debri-environment
   (&key (debri-r 40) (debri-h 1000)
@@ -209,7 +209,7 @@
   )
 
 (defun publish-debri-motion
-  (&key coords radius height handle-ratio (step-time 400) (update? t))
+  (&key coords radius height handle-ratio (step-time 200) (update? t))
   (when update?
     (get-debri-motion-full radius height coords handle-ratio :use-ri? nil))
   (ros::ros-info "debri-stand-coords: ~a~%" *debri-stand-coords*)

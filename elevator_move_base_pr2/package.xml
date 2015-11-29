@@ -1,6 +1,6 @@
 <package>
   <name>elevator_move_base_pr2</name>
-  <version>0.0.0</version>
+  <version>0.0.2</version>
   <description>elevator_move_base_pr2</description>
   <maintainer email="k-okada@jsk.t.u-tokyo.ac.jp">Kei Okada</maintainer>
   <author email="k-okada@jsk.t.u-tokyo.ac.jp">Manabu Saito</author>
@@ -23,11 +23,14 @@
   <build_depend>move_base_msgs</build_depend>
   <build_depend>sound_play</build_depend>
   <build_depend>std_srvs</build_depend>
+  <build_depend>std_msgs</build_depend>
   <build_depend>nav_msgs</build_depend>
   <build_depend>image_geometry</build_depend>
   <build_depend>image_transport</build_depend>
-  <build_depend>roseus_smach</build_depend>
   <build_depend>cv_bridge</build_depend>
+  <build_depend>message_generation</build_depend>
+  <run_depend>message_runtime</run_depend>
+  
 
   <!-- Dependencies needed after this package is compiled. -->
   <test_depend>rostest</test_depend>

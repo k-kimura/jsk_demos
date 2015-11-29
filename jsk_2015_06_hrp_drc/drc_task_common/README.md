@@ -1,5 +1,8 @@
 # drc_task_common
 
+## Introduction
+provides drc\_task\_ common task programs.
+
 ## Setup
 1. Setup your account allowing sudo without password and keep environmental variable.
 
@@ -20,8 +23,21 @@ $ sudo visudo
 
   And restart your computer.
 
-## Introduction
-provides drc\_task\_ common task programs.
+2. speed up roslaunch
+
+```
+sudo patch -u /usr/lib/python2.7/dist-packages/catkin_pkg/packages.py < $(rospack find drc_task_common)/patch/catkin_packages.patch
+```
+
+3. Set enviroment variable "ROBOT"
+   For example,
+   ```
+   export ROBOT=HRP2JSKNT
+   ```
+   or
+   ```
+   export ROBOT=JAXON
+   ```
 
 ## drc_task_common.launch
 
@@ -32,20 +48,19 @@ this program needs
 * Track ball mouse (for move robot head)
 
 ### DEPEND
-sudo aptitude install python-pygame
-sudo pip install fysom
+```
+$ sudo aptitude install python-pygame
+$ sudo pip install fysom
+$ sudo aptitude install spacenavd ros-hydro-spacenav-node
+$ sudo aptitude install python-urlgrabber
+```
 
 ### How to launch
 You should put two commands in the defferent terminal
 ```
-roslaunch drc_task_common drc_task_common_hrp2jsknts.launch
-roscd drc_task_common/config; rosrun rviz rviz -d drc_task_common.rviz
+roslaunch drc_task_common operator_station_main.launch
+roslaunch drc_task_common field_computer_main.launch
 ```
-
-### Launch file components
-drc\_task\_common is made up of 8 components,
-preparing... Please read drc_task_common.launch
-
 
 ### How to Use B-Controll Interface
 B-Controll provides 2x8 Buttons and 8 bars. This Section Introduces how to use buttons
@@ -107,53 +122,6 @@ Launch Robot menu
 * reset pose (change robot model pose)
 * reset pose (::)
 
-
-### How to Use RVIZ Object User Interface
-This is for manipulating other objects. Based on PointCloud Marker.
-This also uses B-Control Interface for ANGLE and other Buttons.
-
-#### Needed Rviz Object
-preparing.... (may be in config/drc_task_common.rviz)
-
-#### Flow
-First, choose b-box in rviz.
-Then, Interactive Cloud Marker will be made.
-Click point in Cloud Marker, then One Circle(Menu Marker) will be made.
-Right-Click it, then you can make other Marker, if you Right-Click this Marker, You can make robot solve ik.
-
-#### Markers
-
-##### Cloud Marker
-![](images/none_marker.png)
-
-You can move this with 6-Dof Control, you can select points of cloud for create menu marker
-
-##### Menu Marker
-show menu, this marker creates other markers.
-
-##### Push Marker
-![](images/push_marker.png)
-
-show push point
-
-##### Grasp Marke
-![](images/grasp_marker.png)
-
-show grasp point
-
-##### Restraint Marker
-![](images/restraint_marker.png)
-
-show restraint, robot may solve ik with :x by this arrow.
-
-#### Trouble shoot for this interface
-Q. I can not select points !
-
-A. We cannot select points over other Interactive marker, so please move Cloud Marker or delete other markers
-
-Q. The IK Result is different from the result I thought.
-
-A. This Interface provides two Base Frame, grasp commands and push command uses manipulate_frame and move command uses marker_frame. Before move commands done, robot thinks that The objects doesn't move. In other words, manipulate_frame does moves when move-object Event Driven.
 
 ### Trouble Shoot
 
@@ -219,3 +187,152 @@ rospy.service.ServiceException: service [/SequencePlayerServiceROSBridge/addJoin
 ```
 
 A. hrpsys_ros_bridge is not launched.
+
+## test-drc-terrain-walk.l
+This is kinematics (not dynamics) simulator of test terrain walk for DRC
+
+### How to launch
+You should generate xml file from wrl files, and launch the following for each robot
+
+#### hrp2jsknt
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find hrp2_models`/HRP2JSKNT_for_OpenHRP3/HRP2JSKNTmain.wrl OUTPUT:=/tmp/HRP2JSKNT_for_DRCTestbedTerrainJPBlock.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestbedTerrainJPBlock.wrl,0.4,-2.0,0,1,0,0,0" CORBA_PORT:=15005 INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials hrp2jsknt.launch PROJECT_FILE:=/tmp/HRP2JSKNT_for_DRCTestbedTerrainJPBlock.xml
+```
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find hrp2_models`/HRP2JSKNT_for_OpenHRP3/HRP2JSKNTmain.wrl OUTPUT:=/tmp/HRP2JSKNT_for_DRCTestfieldTerrain.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestfieldTerrain.wrl,0.4,-2.1,0,1,0,0,0" CORBA_PORT:=15005 INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials hrp2jsknt.launch PROJECT_FILE:=/tmp/HRP2JSKNT_for_DRCTestfieldTerrain.xml
+```
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find hrp2_models`/HRP2JSKNT_for_OpenHRP3/HRP2JSKNTmain.wrl OUTPUT:=/tmp/HRP2JSKNT_for_DRCTestfieldStair.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestfieldStair.wrl,0.25,0,0,1,0,0,0" CORBA_PORT:=15005 INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials hrp2jsknt.launch PROJECT_FILE:=/tmp/HRP2JSKNT_for_DRCTestfieldStair.xml
+```
+
+
+![](images/hrp2jsknt_sim.png)
+
+#### hrp2jsk
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find hrp2_models`/HRP2JSK_for_OpenHRP3/HRP2JSKmain.wrl OUTPUT:=/tmp/HRP2JSK_for_DRCTestbedTerrainJPBlock.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestbedTerrainJPBlock.wrl,0.4,-2.0,0,1,0,0,0," CORBA_PORT:=15005 INTEGRATE:=false CONF_DT_OPTION:="--dt 0.004" SIMULATION_TIMESTEP_OPTION:="--timeStep 0.004"
+rtmlaunch hrpsys_ros_bridge_tutorials hrp2jsk.launch PROJECT_FILE:=/tmp/HRP2JSK_for_DRCTestbedTerrainJPBlock.xml
+```
+
+![](images/hrp2jsk_sim.png)
+
+#### hrp2jsknts
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find hrp2_models`/HRP2JSKNTS_for_OpenHRP3/HRP2JSKNTSmain.wrl OUTPUT:=/tmp/HRP2JSKNTS_for_DRCTestbedTerrainJPBlock.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestbedTerrainJPBlock.wrl,0.4,-2.0,0,1,0,0,0" CORBA_PORT:=15005 INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials hrp2jsknts.launch PROJECT_FILE:=/tmp/HRP2JSKNTS_for_DRCTestbedTerrainJPBlock.xml
+```
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find hrp2_models`/HRP2JSKNTS_for_OpenHRP3/HRP2JSKNTSmain.wrl OUTPUT:=/tmp/HRP2JSKNTS_for_DRCTestfieldTerrain.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestfieldTerrain.wrl,0.4,-2.1,0,1,0,0,0" CORBA_PORT:=15005 INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials hrp2jsknts.launch PROJECT_FILE:=/tmp/HRP2JSKNTS_for_DRCTestfieldTerrain.xml
+```
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find hrp2_models`/HRP2JSKNTS_for_OpenHRP3/HRP2JSKNTSmain.wrl OUTPUT:=/tmp/HRP2JSKNTS_for_DRCTestfieldStair.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestfieldStair.wrl,0.18,0,0,1,0,0,0" CORBA_PORT:=15005 INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials hrp2jsknts.launch PROJECT_FILE:=/tmp/HRP2JSKNTS_for_DRCTestfieldStair.xml
+```
+
+#### jaxon
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find jsk_models`/JAXON/JAXONmain.wrl OUTPUT:=/tmp/JAXON_for_DRCTestbedTerrainJPBlock.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestbedTerrainJPBlock.wrl,0.4,-2.0,0,1,0,0,0" CORBA_PORT:=15005 CONF_DT_OPTION:="--dt 0.002" SIMULATION_TIMESTEP_OPTION:="--timeStep 0.002" INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials jaxon.launch PROJECT_FILE:=/tmp/JAXON_for_DRCTestbedTerrainJPBlock.xml
+```
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find jsk_models`/JAXON/JAXONmain.wrl OUTPUT:=/tmp/JAXON_for_DRCTestfieldTerrain.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestfieldTerrain.wrl,0.4,-2.1,0,1,0,0,0" CORBA_PORT:=15005 CONF_DT_OPTION:="--dt 0.002" SIMULATION_TIMESTEP_OPTION:="--timeStep 0.002" INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials jaxon.launch PROJECT_FILE:=/tmp/JAXON_for_DRCTestfieldTerrain.xml
+```
+
+![](images/jaxon_sim.png)
+
+#### staro
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find jsk_models`/STARO/STAROmain.wrl OUTPUT:=/tmp/STARO_for_DRCTestbedTerrainJPBlock.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestbedTerrainJPBlock.wrl,0.4,-2.0,0,1,0,0,0" CORBA_PORT:=15005 CONF_DT_OPTION:="--dt 0.002" SIMULATION_TIMESTEP_OPTION:="--timeStep 0.002" INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials staro.launch PROJECT_FILE:=/tmp/STARO_for_DRCTestbedTerrainJPBlock.xml
+```
+
+![](images/staro_sim.png)
+
+#### jaxon(stair)
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find jsk_models`/JAXON/JAXONmain.wrl OUTPUT:=/tmp/JAXON_for_DRCTestbedStair.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestbedStair.wrl,0.25,0.0,0,1,0,0,0," CORBA_PORT:=15005 CONF_DT_OPTION:="--dt 0.002" SIMULATION_TIMESTEP_OPTION:="--timeStep 0.002" INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials jaxon.launch PROJECT_FILE:=/tmp/JAXON_for_DRCTestbedStair.xml
+```
+```
+rtmtest -t hrpsys_tools _gen_project.launch INPUT:=`rospack find jsk_models`/JAXON/JAXONmain.wrl OUTPUT:=/tmp/JAXON_for_DRCTestfieldStair.xml OBJECT_MODELS:="`rospack find hrpsys`/share/hrpsys/samples/environments/DRCTestfieldStair.wrl,0.15,0,0,1,0,0,0" CORBA_PORT:=15005 CONF_DT_OPTION:="--dt 0.002" SIMULATION_TIMESTEP_OPTION:="--timeStep 0.002" INTEGRATE:=false
+rtmlaunch hrpsys_ros_bridge_tutorials jaxon.launch PROJECT_FILE:=/tmp/JAXON_for_DRCTestfieldStair.xml
+```
+
+![](images/jaxon_stair_sim.png)
+
+### Load euslisp
+Load main euslisp program "test-drc-terrain-walk.l"
+
+First,you should start roseus
+```
+roscd drc_task_common/euslisp
+git pull origin master
+roseus
+```
+And load "test-drc-terrain-walk.l"
+```
+(load "test-drc-terrain-walk.l")
+```
+
+### Try terrain walk simulation
+Try terrain walking simulation for each robot (hrp2jsknt, hrp2jsk, jaxon, staro)
+
+#### Setup pose
+Load each robot interface.l and send walking-pose and command (objects (list *robot* *rleg-sole* *lleg-sole* *terrain*))
+```
+(setup-drc-testbed-terrain-simulation-hrp2jsknt)
+(setup-drc-testbed-terrain-simulation-hrp2jsk)
+(setup-drc-testbed-terrain-simulation-jaxon)
+(setup-drc-testbed-terrain-simulation-staro)
+```
+
+#### Walk 1 step
+One step terrain walk simulation for each robot by footstep
+
+Footstep arguments are (rleg-fwd-offset[mm] lleg-fwd-offset[mm])
+```
+(test-drc-testbed-simulation-common-one 280 280)
+```
+
+For example, jaxon
+
+![](images/1_step_jaxon.png)
+
+#### Walk straight by some steps
+One through terrain walk simulation by some steps for each robot by footstep
+```
+(test-drc-testbed-terrain-simulation-hrp2jsknt)
+(test-drc-testbed-terrain-simulation-hrp2jsk)
+(test-drc-testbed-terrain-simulation-jaxon)
+(test-drc-testbed-terrain-simulation-staro)
+```
+
+For example, jaxon
+
+![](images/1_through_jaxon.png)
+
+### Try stair climb simulation
+Try stair climbing simulation for jaxon
+
+#### Setup pose
+Load robot interface.l and send walking-pose and command (objects (list *robot* *rleg-sole* *lleg-sole* *stair*))
+```
+(setup-drc-testbed-stair-simulation-jaxon)
+```
+
+![](images/setup_stair_jaxon.png)
+
+#### Climb stair
+Climb stair simulation for jaxon by footstep
+
+Initial position offset parameters are given by :x-offset(0.05[m] by default) and :yaw-offset(-30[deg] by default)
+```
+(test-drc-testbed-stair-simulation-jaxon :x-offset 0.05 :yaw-offset -30)
+```
+
+![](images/stair_climb_jaxon.png)

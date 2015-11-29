@@ -10,8 +10,6 @@
 (require :state-machine "package://roseus_smach/src/state-machine.l")
 (require :state-machine-ros "package://roseus_smach/src/state-machine-ros.l") ;; for smach visualize only
 
-(ros::roseus "state_machine")
-
 (defclass task-state-machine
   :super state-machine
   :slots (transitions contexts output-image-file initial-hook-obj initial-hook-method smach-visualizer))
@@ -42,7 +40,7 @@
   (:next? (next-state)
     "return t if state machine can go to next-state from the current state"
     (or (eq (send self :state) next-state)
-        (let ((candidate-transitions (send self :lookup-transitions active-state)))
+        (let ((candidate-transitions (send self :lookup-transitions (send self :active-state))))
           (not (null (remove-if-not #'(lambda (trans)
                                         (eq next-state
                                             (send (send trans :to) :name)))
@@ -60,7 +58,7 @@
   (:go-to (next-state)
     (if (send self :next? next-state)
         (send self :go-to! next-state)
-      (error "Cannot change state from ~A to ~A"
+      (ros::ros-warn "Cannot change state from ~A to ~A"
              (send self :state) next-state)))
   (:lookup-transitions (start-state &key (direction :from))
     (remove-if-not #'(lambda (trans)
@@ -461,8 +459,10 @@ Usage:
      (:recognizing-valve-pose -> :selecting-exec-for-valve) ;recognition done
      (:recognizing-valve-pose -> :initial) ;cancel
      (:selecting-exec-for-valve -> :executing-valve)          ;exec
+     (:executing-valve -> :selecting-exec-for-valve)          ;cancel
      (:selecting-exec-for-valve -> :initial)                   ;cancel
      (:executing-valve -> :initial)                            ;done
+
      ;; door
      (:initial -> :selecting-region-for-door)
      (:selecting-region-for-door -> :initial) ;cancel
@@ -470,6 +470,7 @@ Usage:
      (:recognizing-door-pose -> :selecting-exec-for-door) ;recognition done
      (:recognizing-door-pose -> :initial) ;cancel
      (:selecting-exec-for-door -> :executing-door)          ;exec
+     (:executing-door -> :selecting-exec-for-door)          ;cancel
      (:selecting-exec-for-door -> :initial)                   ;cancel
      (:executing-door -> :initial)                            ;done
      ;; debri
@@ -479,6 +480,7 @@ Usage:
      (:recognizing-debri-pose -> :selecting-exec-for-debri) ;recognition done
      (:recognizing-debri-pose -> :initial) ;cancel
      (:selecting-exec-for-debri -> :executing-debri)          ;exec
+     (:executing-debri -> :selecting-exec-for-debri)          ;cancel
      (:selecting-exec-for-debri -> :initial)                   ;cancel
      (:executing-debri -> :initial)                            ;done
      ;; hose-grasp
@@ -488,6 +490,7 @@ Usage:
      (:recognizing-hose-grasp-pose -> :selecting-exec-for-hose-grasp) ;recognition done
      (:recognizing-hose-grasp-pose -> :initial) ;cancel
      (:selecting-exec-for-hose-grasp -> :executing-hose-grasp)          ;exec
+     (:executing-hose-grasp -> :selecting-exec-for-hose-grasp)          ;cancel
      (:selecting-exec-for-hose-grasp -> :initial)                   ;cancel
      (:executing-hose-grasp -> :initial)                            ;done
      ;; hose-connect
@@ -496,16 +499,19 @@ Usage:
      (:selecting-region-for-hose-connect -> :recognizing-hose-connect-pose)
      (:recognizing-hose-connect-pose -> :selecting-exec-for-hose-connect) ;recognition done
      (:recognizing-hose-connect-pose -> :initial) ;cancel
-     (:selecting-exec-for-hose-connect -> :executing-hose-connect)          ;exec
+     (:selecting-exec-for-hose-connect -> :executing-hose-connect)          ;exe
+     (:executing-hose-connect -> :selecting-exec-for-hose-connect)          ;cancel
      (:selecting-exec-for-hose-connect -> :initial)                   ;cancel
      (:executing-hose-connect -> :initial)                            ;done
      ;; drill_grasp
      (:initial -> :selecting-region-for-drill-grasp)
+     (:initial -> :recognizing-drill-grasp-pose)
      (:selecting-region-for-drill-grasp -> :initial) ;cancel
      (:selecting-region-for-drill-grasp -> :recognizing-drill-grasp-pose) 
      (:recognizing-drill-grasp-pose -> :selecting-exec-for-drill-grasp) ;recognition done
      (:recognizing-drill-grasp-pose -> :initial) ;cancel
      (:selecting-exec-for-drill-grasp -> :executing-drill-grasp)          ;exec
+     (:executing-drill-grasp -> :selecting-exec-for-drill-grasp)          ;cancel
      (:selecting-exec-for-drill-grasp -> :initial)                   ;cancel
      (:executing-drill-grasp -> :initial)                            ;done
      ;; drill_put
@@ -515,6 +521,7 @@ Usage:
      (:recognizing-drill-put-pose -> :selecting-exec-for-drill-put) ;recognition done
      (:recognizing-drill-put-pose -> :initial) ;cancel
      (:selecting-exec-for-drill-put -> :executing-drill-put)          ;exec
+     (:executing-drill-put -> :selecting-exec-for-drill-put)          ;cancel
      (:selecting-exec-for-drill-put -> :initial)                   ;cancel
      (:executing-drill-put -> :initial)                            ;done
      ;; drill_wall
@@ -524,6 +531,7 @@ Usage:
      (:recognizing-drill-wall -> :selecting-exec-for-drill-wall) ;recognition done
      (:recognizing-drill-wall -> :initial) ;cancel
      (:selecting-exec-for-drill-wall -> :executing-drill-wall)          ;exec
+     (:executing-drill-wall -> :selecting-exec-for-drill-wall)          ;cancel
      (:selecting-exec-for-drill-wall -> :initial)                   ;cancel
      (:executing-drill-wall -> :initial)                            ;done
      ;; drill_button
@@ -533,8 +541,32 @@ Usage:
      (:recognizing-drill-button-pose -> :selecting-exec-for-drill-button) ;recognition done
      (:recognizing-drill-button-pose -> :initial) ;cancel
      (:selecting-exec-for-drill-button -> :executing-drill-button)          ;exec
+     (:executing-drill-button -> :selecting-exec-for-drill-button)          ;cancel
      (:selecting-exec-for-drill-button -> :initial)                   ;cancel
      (:executing-drill-button -> :initial)                            ;done
+     ;; drill_rotate
+     (:initial -> :selecting-region-for-drill-rotate)
+     (:selecting-region-for-drill-rotate -> :initial) ;cancel
+     (:selecting-region-for-drill-rotate -> :recognizing-drill-rotate-pose)
+     (:recognizing-drill-rotate-pose -> :selecting-exec-for-drill-rotate) ;recognition done
+     (:recognizing-drill-rotate-pose -> :initial) ;cancel
+     (:selecting-exec-for-drill-rotate -> :executing-drill-rotate)          ;exec
+     (:executing-drill-rotate -> :selecting-exec-for-drill-rotate)          ;cancel
+     (:selecting-exec-for-drill-rotate -> :initial)                   ;cancel
+     (:executing-drill-rotate -> :initial)                            ;done
+     ;; driving
+     (:initial -> :vehicle)
+     (:vehicle -> :initial)
+     ;; stair
+     (:initial -> :stair)
+     (:stair -> :initial)
+     ;; terrain
+     (:initial -> :executing-lookground)
+     (:executing-lookground -> :initial)
+     (:initial -> :executing-terrain-footsteps)
+     (:executing-terrain-footsteps -> :initial)
+     (:initial -> :planning-footsteps)
+     (:planning-footsteps -> :initial)
      )
    '((:initial :initial)
      ;; go-pos
@@ -592,6 +624,19 @@ Usage:
      (:recognizing-drill-button-pose :drill-button)
      (:selecting-exec-for-drill-button :drill-button)
      (:executing-drill-button :drill-button)
+     ;; drill-rotate
+     (:selecting-region-for-drill-rotate :drill-rotate)
+     (:recognizing-drill-rotate-pose :drill-rotate)
+     (:selecting-exec-for-drill-rotate :drill-rotate)
+     (:executing-drill-rotate :drill-rotate)
+     ;; driving
+     (:vehicle :vehicle)
+     ;; stair
+     (:stair :stair)
+     ;; terrain
+     (:executing-lookground :terrain)
+     (:executing-terrain-footsteps :terrain)
+     (:planning-footsteps :terrain)
      )
    :initial "ocs_state.png" t))
 
@@ -618,6 +663,9 @@ Usage:
 
      (:initial -> :recognizing-drill-button-pose)
      (:recognizing-drill-button-pose -> :initial)
+
+     (:initial -> :recognizing-drill-rotate-pose)
+     (:recognizing-drill-rotate-pose -> :initial)
 
      (:initial -> :recognizing-door-pose)
      (:recognizing-door-pose -> :initial)
@@ -648,6 +696,9 @@ Usage:
 
      (:initial -> :executing-drill-button)
      (:executing-drill-button -> :initial)
+
+     (:initial -> :executing-drill-rotate)
+     (:executing-drill-rotate -> :initial)
      
      (:initial -> :executing-door)
      (:executing-door -> :initial)
@@ -667,6 +718,25 @@ Usage:
      
      (:initial -> :executing-look-around)
      (:executing-look-around -> :initial)
+
+     (:initial -> :executing-angle-vector)
+     (:executing-angle-vector -> :initial)
+
+     (:initial -> :executing-reach-until-touch)
+     (:executing-reach-until-touch -> :initial)
+
+     (:initial -> :executing-vehicle)
+     (:executing-vehicle -> :initial)
+
+     (:initial -> :executing-stair)
+     (:executing-stair -> :initial)
+
+     (:initial -> :executing-terrain-lookground)
+     (:executing-terrain-lookground -> :initial)
+     (:initial -> :executing-terrain-footsteps)
+     (:executing-terrain-footsteps -> :initial)
+     (:initial -> :planning-terrain-footsteps)
+     (:planning-terrain-footsteps -> :initial)
      )
    '((:initial :initial)
      
@@ -686,6 +756,8 @@ Usage:
      (:executing-drill-wall :drill)
      (:recognizing-drill-button-pose :drill)
      (:executing-drill-button :drill)
+     (:recognizing-drill-rotate-pose :drill)
+     (:executing-drill-rotate :drill)
 
 
      (:recognizing-door-pose :door)
@@ -701,6 +773,18 @@ Usage:
      (:recognizing-look-at-point-panorama :look-at)
      
      (:executing-look-around :look-around)
+
+     (:executing-angle-vector :angle-vector)
+
+     (:executing-reach-until-touch :reach-until-touch)
+
+     (:executing-vehicle :vehicle)
+
+     (:executing-stair :stair)
+
+     (:executing-terrain-lookground :terrain)
+     (:executing-terrain-footsteps :terrain)
+     (:planning-terrain-footsteps :terrain)
      )
    :initial nil t
    ))

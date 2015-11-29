@@ -1,203 +1,256 @@
 <launch>
-  <arg name="INPUT_POINT_CLOUD" default="/full_cloud2" />
+  <arg name="INPUT_POINT_CLOUD" default="/laser_downsampler/output" />
   <arg name="MULTISENSE_STANDALONE" default="false" />
+  <arg if="$(arg MULTISENSE_STANDALONE)"
+      name="input_imu" value="/multisense/imu/imu_data" />
+  <arg unless="$(arg MULTISENSE_STANDALONE)"
+      name="input_imu" value="/imu" />
+  <arg name="RUN_SELF_FILTER" default="false" />
+  <arg if="$(arg RUN_SELF_FILTER)"
+       name="SELF_FILTER_PARAM" default="$(find jsk_hrp2_ros_bridge)/config/$(env ROBOT)_self_filter.yaml" />
+
   <group ns="locomotion">
-    <node pkg="nodelet" type="nodelet" name="manager" args="manager" output="screen"/>
-    <node pkg="nodelet" type="nodelet"
-          name="x_filter"
-          args="standalone pcl/PassThrough manager">
-      <remap from="~input" to="$(arg INPUT_POINT_CLOUD)" />
-      <rosparam>
-        filter_field_name: x
-        filter_limit_min: -3
-        filter_limit_max: 3
-        filter_limit_negative: false
+    <node if="$(arg RUN_SELF_FILTER)"
+          pkg="pr2_navigation_self_filter" type="self_filter"
+          name="locomotion_self_filter" output="screen">
+      <remap from="cloud_in" to="$(arg INPUT_POINT_CLOUD)" />
+      <remap from="cloud_out" to="locomotion_self_filter/output" />
+      <rosparam command="load" file="$(arg SELF_FILTER_PARAM)" />
+    </node>
+    <node pkg="jsk_topic_tools" type="snapshot" name="input">
+      <remap unless="$(arg RUN_SELF_FILTER)"
+             from="~input" to="$(arg INPUT_POINT_CLOUD)" />
+      <remap if="$(arg RUN_SELF_FILTER)"
+             from="~input" to="locomotion_self_filter/output" />
+    </node>
+    <node pkg="jsk_topic_tools" type="standalone_complexed_nodelet"
+          name="manager" respawn="true" output="log">
+      <rosparam subst_value="true">
+
+nodelets:
+  - name: gsensor_cloud
+    type: jsk_pcl/TfTransformCloud
+    remappings:
+      - from: ~input
+        to: input/output
+  - name: x_filter
+    type: pcl/PassThrough
+    remappings:
+      - from: ~input
+        to: gsensor_cloud/output
+  - name: y_filter
+    type: pcl/PassThrough
+    remappings:
+      - from: ~input
+        to: x_filter/output
+  - name: z_filter
+    type: pcl/PassThrough
+    remappings:
+      - from: ~input
+        to: y_filter/output
+  - name: remove_outlier
+    type: pcl/RadiusOutlierRemoval
+    remappings:
+      - from: ~input
+        to: z_filter/output
+  - name: odom_cloud
+    type: jsk_pcl/TfTransformCloud
+    remappings:
+      - from: ~input
+        to: remove_outlier/output
+  - name: footprint_respected_to_map
+    type: jsk_pcl/PolygonArrayTransformer
+    remappings:
+      - from: ~input_polygons
+        to: footprint_polygon_publisher/output_polygons
+      - from: ~input_coefficients
+        to: footprint_polygon_publisher/output_coefficients
+  - name: footprint_magnifier
+    type: jsk_pcl/PolygonMagnifier
+    remappings:
+      - from: ~input
+        to: footprint_respected_to_map/output_polygons
+  - name: footprint_magnifier_for_point_sampler
+    type: jsk_pcl/PolygonMagnifier
+    remappings:
+      - from: ~input
+        to: footprint_respected_to_map/output_polygons
+  - name: footprint_point_sampler
+    type: jsk_pcl/PolygonPointsSampler
+    remappings:
+      - from: ~input/polygons
+        to: footprint_magnifier_for_point_sampler/output
+      - from: ~input/coefficients
+        to: footprint_respected_to_map/output_coefficients
+  - name: normal_estimation
+    type: jsk_pcl/NormalEstimationOMP
+    remappings:
+      - from: ~input
+        to: odom_cloud/output
+  - name: normal_concat
+    type: jsk_pcl/NormalConcatenater
+    remappings:
+      - from: ~input
+        to: odom_cloud/output
+      - from: ~normal
+        to: normal_estimation/output
+  - name: pointcloud_concatenator
+    type: pcl/PointCloudConcatenateDataSynchronizer
+  - name: normal_flip
+    type: jsk_pcl/NormalFlipToFrame
+    remappings:
+      - from: ~input
+        to: pointcloud_concatenator/output
+  - name: normal_direction_filter
+    type: jsk_pcl/NormalDirectionFilter
+    remappings:
+      - from: ~input
+        to: normal_flip/output
+      - from: ~input_imu
+        to: $(arg input_imu)
+  - name: normal_filtered_points
+    type: pcl/ExtractIndices
+    remappings:
+      - from: ~input
+        to: normal_flip/output
+      - from: ~indices
+        to: normal_direction_filter/output
+  - name: relay_normal_flip
+    type: jsk_topic_tools/Relay
+    remappings:
+      - from: ~input
+        to: normal_flip/output
+      - from: ~output
+        to: /communication/normal_flip_cloud
+  - name: relay_normal_filterd_points
+    type: jsk_topic_tools/Relay
+    remappings:
+      - from: ~input
+        to: normal_filtered_points/output
+      - from: ~output
+        to: /communication/locomotion_cloud
       </rosparam>
     </node>
-    <node pkg="nodelet" type="nodelet"
-          name="y_filter"
-          args="standalone pcl/PassThrough manager">
-      <remap from="~input" to="x_filter/output" />
+    <group ns="gsensor_cloud">
+      <rosparam>
+        target_frame_id: ground
+      </rosparam>
+    </group>
+    <group ns="x_filter">
+      <rosparam>
+        filter_field_name: x
+        filter_limit_min: -10
+        filter_limit_max: 10
+        filter_limit_negative: false
+      </rosparam>
+    </group>
+    <group ns="y_filter">
       <rosparam>
         filter_field_name: y
         filter_limit_min: -3
         filter_limit_max: 3
         filter_limit_negative: false
       </rosparam>
-    </node>
-
-    <!-- first, remove upper pointcloud -->
-    <node pkg="nodelet" type="nodelet"
-          name="z_filter"
-          args="standalone pcl/PassThrough manager">
-      <remap from="~input" to="y_filter/output" />
+    </group>
+    <group ns="z_filter">
+      <param if="$(arg MULTISENSE_STANDALONE)" name="input_frame" value="multisense/head_root" />
       <rosparam>
         filter_field_name: z
         filter_limit_negative: true
       </rosparam>
       <rosparam unless="$(arg MULTISENSE_STANDALONE)">
-        input_frame: gsensor
         filter_limit_min: 0.8
         filter_limit_max: 100.0
       </rosparam>
-      <param name="input_frame" value="multisense/head_root"
-             if="$(arg MULTISENSE_STANDALONE)"/>
-    </node>
-    
-    <node pkg="drc_task_common" type="robot-boundingbox.l" name="robot_bbox">
-    </node>
-    <node pkg="drc_task_common" type="robot-boundingbox.l" name="robot_leg_bbox">
-      <remap from="/robot_bbox" to="/robot_legs_bbox" />
-      <remap from="/robot_bbox_array" to="/robot_legs_bbox_array" />
+    </group>
+    <group ns="remove_outlier">
       <rosparam>
-        padding_z: 0.1 # 10cm padding
-        links: ["RLEG_LINK0", "RLEG_LINK1", "RLEG_LINK2", "RLEG_LINK3", "RLEG_LINK4", "RLEG_LINK5",
-                "LLEG_LINK0", "LLEG_LINK1", "LLEG_LINK2", "LLEG_LINK3", "LLEG_LINK4", "LLEG_LINK5"]
+        radius_search: 0.05
+        min_neighbors: 10
       </rosparam>
-    </node>
-    <node pkg="nodelet" type="nodelet"
-          name="pointcloud_localization"
-          args="standalone jsk_pcl/PointCloudLocalization manager">
-      <remap from="~input" to="laser_self_filter_points/output" />
-      <remap from="~icp_align" to="icp_localization/icp_align" />
-      <param name="odom_frame" value="multisense/head_root"
-             if="$(arg MULTISENSE_STANDALONE)" />
+    </group>
+    <group ns="odom_cloud">
       <rosparam>
-        leaf_size: 0.02
+        target_frame_id: ground
       </rosparam>
-    </node>
-    <node pkg="nodelet" type="nodelet"
-          args="standalone jsk_pcl/ICPRegistration manager"
-          name="icp_localization" output="screen">
+    </group>
+    <group ns="footprint_respected_to_map">
       <rosparam>
-        use_flipped_initial_pose: false
-        correspondence_distance: 1.0
-        max_iteration: 10000
+        frame_id: ground
       </rosparam>
-    </node>
-    
-    <node pkg="nodelet" type="nodelet"
-          name="laser_self_filter"
-          args="standalone jsk_pcl/AttentionClipper manager">
-      <remap from="~input/points" to="z_filter/output" />
-      <remap from="~input/box" to="/robot_bbox" />
+    </group>
+    <group ns="footprint_magnifier">
       <rosparam>
-        not_sync: true
-#        frame_id: BODY
+        magnify_distance: 0.5
       </rosparam>
-      <param name="frame_id" value="multisense/head_root"
-             if="$(arg MULTISENSE_STANDALONE)" />
-
-    </node>
-    <node pkg="nodelet" type="nodelet" name="laser_self_filter_points"
-          args="standalone pcl/ExtractIndices manager">
-      <remap from="~input" to="z_filter/output" />
-      <remap from="~indices" to="laser_self_filter/output/point_indices" />
+    </group>
+    <group ns="footprint_magnifier_for_point_sampler">
       <rosparam>
-        negative: true
+        magnify_distance: 0.04
       </rosparam>
-    </node>
-    
-    <node pkg="nodelet" type="nodelet" name="normal_estimation"
-          args="standalone pcl/NormalEstimationOMP manager">
-      <remap from="~input" to="pointcloud_localization/output"/>
+    </group>
+    <group ns="footprint_point_sampler">
+      <rosparam>
+      </rosparam>
+    </group>
+    <group ns="add_point_indices">
+    </group>
+    <group ns="normal_estimation">
       <rosparam>
         k_search: 0
-        radius_search: 0.1
+        radius_search: 0.05
         spatial_locator: 0
       </rosparam>
-    </node>
-    
-    <node pkg="nodelet" type="nodelet" name="normal_concat"
-          args="standalone jsk_pcl/NormalConcatenater manager">
-      <remap from="~input" to="pointcloud_localization/output" />
-      <remap from="~normal" to="normal_estimation/output" />
+    </group>
+    <group ns="normal_concat">
       <rosparam>
-        use_async: true
+        use_async: false
       </rosparam>
-    </node>
-    <!-- plane estimation -->
-    <node pkg="nodelet" type="nodelet" name="normal_direction_filter"
-          args="standalone jsk_pcl/NormalDirectionFilter manager">
-      <remap from="~input" to="normal_concat/output" />
-      <remap from="~input_imu" to="/multisense/imu/imu_data" />
+    </group>
+    <group ns="pointcloud_concatenator">
       <rosparam>
+        input_topics: ["/locomotion/normal_concat/output", "/locomotion/footprint_point_sampler/output"]
+        output_frame: ground
+        max_queue_size: 50
+      </rosparam>
+    </group>
+    <group ns="normal_flip">
+      <rosparam>
+        frame_id: head_root
+      </rosparam>
+    </group>
+    <group ns="normal_direction_filter">
+      <rosparam>
+        queue_size: 2000
         use_imu: true
         eps_angle: 0.5 # too large?
       </rosparam>
-    </node>
-    <node pkg="nodelet" type="nodelet" name="normal_filtered_points"
-          args="standalone pcl/ExtractIndices manager">
-      <remap from="~input" to="normal_concat/output" />
-      <remap from="~indices" to="normal_direction_filter/output" />
+    </group>
+    <group ns="normal_filtered_points">
       <rosparam>
         negative: false
       </rosparam>
-    </node>
-    <node pkg="nodelet" type="nodelet" name="plane_estimation"
-          args="standalone jsk_pcl/RegionGrowingMultiplePlaneSegmentation manager" >
-      <remap from="~input" to="normal_filtered_points/output" />
-      <remap from="~input_normal" to="normal_filtered_points/output" />
-      <rosparam>
-        max_size: 50000
-        min_size: 200
-        angular_threshold: 0.02
-        distance_threshold: 0.005
-      </rosparam>
-    </node>
-    <node pkg="nodelet" type="nodelet" name="plane_concatenator"
-          args="standalone jsk_pcl/PlaneConcatenator manager" >
-      <remap from="~input" to="normal_filtered_points/output" />
-      <remap from="~input/indices" to="plane_estimation/output/inliers" />
-      <remap from="~input/polygons" to="plane_estimation/output/polygons" />
-      <remap from="~input/coefficients" to="plane_estimation/output/coefficients" />
-      <rosparam>
-      </rosparam>
-    </node>
+    </group>
+    <group ns="relay_normal_flip">
+    </group>
+    <group ns="relay_normal_filterd_points">
+    </group>
 
-    <!-- stereo -->
-    <node pkg="jsk_pcl_ros" type="organized_multi_plane_segmentation" name="stereo_plane_segmentation">
-      <remap from="~input" to="/multisense/resize_1_4/points" />
-      <rosparam>
-        min_size: 400
-      </rosparam>
-    </node>
-    <node pkg="nodelet" type="nodelet" name="snap_footstep_on_stereo"
-          args="standalone jsk_pcl/Snapit manager">
-      <remap from="~input/polygons" to="stereo_plane_segmentation/output_refined_polygon" />
-      <remap from="~input/polygon_coefficients" to="stereo_plane_segmentation/output_refined_coefficients" />
-      <rosparam>
-        use_service: true
-      </rosparam>
-    </node>
-    <node pkg="jsk_pcl_ros" type="environment_plane_modeling" name="env_server" output="screen">
-      <remap from="~input" to="normal_filtered_points/output"/>
-      <remap from="~input/full_cloud" to="normal_concat/output" />
-      <!-- <remap from="~input/full_cloud" to="normal_filtered_points/output" /> -->
-      <remap from="~input/polygons" to="plane_concatenator/output/polygons" />
-      <remap from="~input/indices" to="plane_concatenator/output/indices" />
-      <remap from="~input/coefficients" to="plane_concatenator/output/coefficients" />
-    </node>
-    
-    <include file="$(find jsk_footstep_planner)/launch/hrp2jsk_footprint.launch">
-      <arg name="INPUT_POINTCLOUD" value="normal_concat/output" />
+    <include file="$(find jsk_footstep_planner)/launch/$(env ROBOT)_footprint.launch">
+      <arg name="INPUT_POINTCLOUD" value="odom_cloud/output" />
     </include>
-    <node pkg="jsk_pcl_ros" type="polygon_array_transformer" name="footprint_respected_to_map">
-      <remap from="~input_polygons" to="footprint_polygon_publisher/output_polygons" />
-      <remap from="~input_coefficients" to="footprint_polygon_publisher/output_coefficients" />
-      <rosparam>
-        frame_id: map
-      </rosparam>
-    </node>
-    <node pkg="jsk_pcl_ros" type="polygon_points_sampler" name="footprint_point_sampler">
-      <remap from="~input/polygons" to="footprint_respected_to_map/output_polygons" />
-      <remap from="~input/coefficients" to="footprint_respected_to_map/output_coefficients" />
-      <rosparam>
-        
-      </rosparam>
-    </node>
-    <node pkg="jsk_pcl_ros" type="polygon_magnifier" name="footprint_magnifier">
-      <remap from="~input" to="footprint_respected_to_map/output_polygons" />
-    </node>
   </group>
+  <node pkg="roseus" type="roseus" name="lookaround_ground"
+        args="$(find jsk_footstep_controller)/euslisp/lookaround-ground.l">
+  </node>
+  <node pkg="jsk_footstep_controller"
+        type="footstep-controller-old.l"
+        name="footstep_controller"
+        respawn="true"
+        clear_params="true"
+        output="screen">
+    <rosparam subst_value="true">
+      interruptible_mode: ":semi-interruptible"
+    </rosparam>
+  </node>
 </launch>

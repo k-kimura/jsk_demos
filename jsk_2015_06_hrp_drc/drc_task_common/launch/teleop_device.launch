@@ -5,6 +5,7 @@
   <arg name="use_icp" default="true" />
   <!-- robot specific setting -->
   <arg name="trackball_head_launch" default="hrp2_trackball_head.launch" />
+  <arg name="enable_trackball_head" default="true" />
   
   <!-- publish spacenav topic -->
   <node pkg="spacenav_node" type="spacenav_node" name="spacenav">
@@ -39,7 +40,7 @@
     <param name="r_min" value="0.01"/>
     <param name="sr_min" value="0.001"/>
   </node>
-
+  
   <!-- spacenav client node -->
   <node pkg="drc_task_common" type="spacenav_client.py" name="spacenav_client">
     <remap from="input_joy" to="$(arg spacenav_joy_topic)"/>
@@ -56,6 +57,9 @@
   </node>
 
   <!-- trackball client node -->
-  <include if="$(arg trackball_head_launch)" file="$(find jsk_teleop_joy)/launch/$(arg trackball_head_launch)">
+  <include if="$(arg enable_trackball_head)" file="$(find jsk_teleop_joy)/launch/$(arg trackball_head_launch)">
+  </include>
+  <include file="$(find drc_task_common)/launch/joy_teleop.launch">
+    <arg name="launch_joy" default="false" />
   </include>
 </launch>

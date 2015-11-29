@@ -1,180 +1,225 @@
 <launch>
-  <arg name="INPUT_IMAGE" default="/multisense/left/image_rect_color"/>
-  <arg name="INPUT_CAMERA_INFO" default="/multisense/left/camera_info"/>
-  <arg name="INPUT_POINT_CLOUD" default="/multisense/resize_1_4/points" />
-  <arg name="CAMERA_FRAME_ID" default="/left_camera_optical_frame" />
-  <arg name="IMU" default="/multisense/imu/imu_data" />
-  <arg name="LAUNCH_MANAGER" default="true" />
-  <arg name="MANAGER" default="drill_manager" />
-  <arg name="DRILL_RECOGNITION_NAMESPACE" default="drill_recognition" />
-  <group if="$(arg LAUNCH_MANAGER)">
-    <node pkg="nodelet" type="nodelet" name="$(arg MANAGER)"
-          args="manager"
-          output="screen"/>
-  </group>
-  <group ns="$(arg DRILL_RECOGNITION_NAMESPACE)">
-    <!-- clustering -->
-    <!-- <node pkg="image_view2" type="image_view2" name="image_view2"> -->
-    <!--   <remap from="image" to="/multisense/left/image_rect_color" /> -->
-    <!-- </node> -->
-    <node pkg="jsk_perception" type="rect_to_mask_image"
-          name="rect_to_mask_image" output="screen">
-      <remap from="~input" to="input_rect" />
-      <remap from="~input/camera_info" to="$(arg INPUT_CAMERA_INFO)" />
+  <group ns="drill_recognition">
+    <node pkg="jsk_topic_tools" type="standalone_complexed_nodelet"
+          name="manager" respawn="true" output="screen">
+      <rosparam subst_value="true">
+nodelets:
+  - name: normal_estimation
+    type: jsk_pcl/NormalEstimationOMP
+    remappings:
+      - from: ~input
+        to: /laser_downsampler/output
+  - name: normal_direction_filter
+    type: jsk_pcl/NormalDirectionFilter
+    remappings:
+      - from: ~input
+        to: normal_estimation/output_with_xyz
+      - from: ~input_imu
+        to: /multisense/imu/imu_data
+  - name: filtered_points
+    type: pcl/ExtractIndices
+    remappings:
+      - from: ~input
+        to: normal_estimation/output_with_xyz
+      - from: ~indices
+        to: normal_direction_filter/output
+  - name: region_growing_multiple_plane_segmentation
+    type: jsk_pcl/RegionGrowingMultiplePlaneSegmentation
+    remappings:
+      - from: ~input
+        to: filtered_points/output
+      - from: ~input_normal
+        to: filtered_points/output
+  - name: polygon_flipper
+    type: jsk_pcl/PolygonFlipper
+    remappings:
+      - from: ~input/polygons
+        to: region_growing_multiple_plane_segmentation/output/polygons
+      - from: ~input/coefficients
+        to: region_growing_multiple_plane_segmentation/output/coefficients
+      - from: ~input/indices
+        to: region_growing_multiple_plane_segmentation/output/inliers
+  - name: multi_plane_extraction
+    type: jsk_pcl/MultiPlaneExtraction
+    remappings:
+      - from: ~input
+        to: /laser_downsampler/output
+      - from: ~input_polygons
+        to: polygon_flipper/output/polygons
+      - from: ~input_coefficients
+        to: polygon_flipper/output/coefficients
+  - name: remove_small_noises
+    type: pcl/RadiusOutlierRemoval
+    remappings:
+      - from: ~input
+        to: multi_plane_extraction/output
+  - name: euclidean_clustering
+    type: jsk_pcl/EuclideanClustering
+    remappings:
+      - from: ~input
+        to: remove_small_noises/output
+  - name: cluster_point_indices_decomposer
+    type: jsk_pcl/ClusterPointIndicesDecomposer
+    remappings:
+      - from: ~input
+        to: remove_small_noises/output
+      - from: ~target
+        to: euclidean_clustering/output
+      - from: ~align_planes
+        to: polygon_flipper/output/polygons
+      - from: ~align_planes_coefficients
+        to: polygon_flipper/output/coefficients
+  - name: filter_small_boxes
+    type: jsk_pcl/BoundingBoxFilter
+    remappings:
+      - from: ~input_box
+        to: cluster_point_indices_decomposer/boxes
+      - from: ~input_indices
+        to: euclidean_clustering/output
+  - name: boundingbox_clipper
+    type: jsk_pcl/AttentionClipper
+    remappings:
+      - from: ~input/points
+        to: remove_small_noises/output
+      - from: ~input/box_array
+        to: static_transform_bounding_box_array/output
+  - name: snapshot
+    type: jsk_topic_tools/Snapshot
+    remappings:
+      - from: ~input
+        to: drill_pose
+      </rosparam>
     </node>
-    
-    <!-- <node pkg="jsk_perception" type="rect_to_mask_image" -->
-    <!--     name="rect_to_mask_image" output="screen"> -->
-    <!--   <remap from="~input" to="input_rect" /> -->
-    <!--   <remap from="~input/camera_info" to="$(arg INPUT_CAMERA_INFO)" /> -->
-    <!-- </node> -->
-    <node pkg="jsk_pcl_ros" type="supervoxel_segmentation" name="supervoxel_segmentation"
-          output="screen">
-      <remap from="~input" to="$(arg INPUT_POINT_CLOUD)" />
-    </node>
-
-    <node pkg="nodelet" type="nodelet" name="supervoxel_normal"
-	  args="standalone pcl/NormalEstimation">
-      <remap from="~input" to="supervoxel_segmentation/output/cloud" />
+    <group ns="normal_estimation">
       <rosparam>
         k_search: 0
-        radius_search: 0.1
-        spatial_locator: 1
+        radius_search: 0.05
       </rosparam>
-    </node>
-
-    <node pkg="jsk_pcl_ros" type="normal_concatenater" name="supervoxel_normal_concat">
-      <remap from="~input" to="supervoxel_segmentation/output/cloud" />
-      <remap from="~normal" to="supervoxel_normal/output" />
+    </group>
+    <group ns="normal_direction_filter">
       <rosparam>
-        use_async: true
+        use_imu: true
+        queue_size: 1000
+        eps_angle: 0.1
+        angle_offset: 0.0
       </rosparam>
-    </node>
-
-    <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" name="supervoxel_segmentation_decomposer">
-      <remap from="~input" to="supervoxel_normal_concat/output" />
-      <remap from="~target" to="supervoxel_segmentation/output/indices" />
-    </node>
-    <node pkg="jsk_pcl_ros" type="mask_image_cluster_filter" name="mask_image_cluster_filter">
-      <remap from="~input" to="supervoxel_normal_concat/output"/>    
-      <remap from="~target" to="supervoxel_segmentation/output/indices" />
-      <remap from="~input/mask" to="rect_to_mask_image/output"/>
-      <remap from="~input/camera_info" to="$(arg INPUT_CAMERA_INFO)" />
-    </node>
-    <node pkg="nodelet" type="nodelet" name="filtered_cloud"
-          args="standalone pcl/ExtractIndices"> <!-- for debug  -->
-          <!-- args="load pcl/ExtractIndices $(arg MANAGER)"> -->
-      <remap from="~input" to="supervoxel_normal_concat/output"/>
-      <remap from="~indices" to="mask_image_cluster_filter/output"/>
-    </node>
-    
-
-    <!-- imu_based_icp -->
-    <node pkg="jsk_pcl_ros" type="calculate_polygon_from_imu.py"
-          name="calc_polygon">
-      <remap from="imu_data" to="$(arg IMU)" />
-    </node>
-    <node pkg="nodelet" type="nodelet" name="polygon_transformer"
-          args="standalone jsk_pcl/PolygonArrayTransformer" >
-          <!-- args="load jsk_pcl/PolygonArrayTransformer /$(arg MANAGER)"> -->
-      <remap from="~input_polygons" to="polygon_array"/>
-      <remap from="~input_coefficients" to="model_coefficients_array" />
-      <param name="frame_id" value="$(arg CAMERA_FRAME_ID)" />
-    </node>
-    <!-- <node pkg="nodelet" type="nodelet" name="add_cluster" -->
-    <!--       args="load jsk_pcl/PointCloudToClusterPointIndices $(arg MANAGER)" -->
-    <!--       output="screen" > -->
-    <node pkg="jsk_pcl_ros" type="pointcloud_to_cluster_point_indices" name="add_cluster">
-      <remap from="~input" to="filtered_cloud/output" />
-    </node>
-    <!-- <node pkg="nodelet" type="nodelet" -->
-    <!--       name="cluster_decomposer_one" -->
-    <!--       args="load jsk_pcl/ClusterPointIndicesDecomposer $(arg MANAGER)" -->
-    <!--     output="screen"> -->
-    <node pkg="jsk_pcl_ros" type="plane_time_ensync_for_recognition.py" name="time_ensync" >
-      <remap from="timer" to="filtered_cloud/output" />
-      <remap from="planes" to="polygon_transformer/output_polygons" />
-      <remap from="planes_coefficients"
-             to="polygon_transformer/output_coefficients" />
-    </node>
-    <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" name="cluster_decomposer_one">
-      <remap from="~input" to="filtered_cloud/output" />
-      <remap from="~target" to="add_cluster/output" />
-      <remap from="~align_planes" to="ensynced_planes" />
-      <remap from="~align_planes_coefficients"
-             to="ensynced_planes_coefficients" />
+    </group>
+    <group ns="filtered_points">
+    </group>
+    <group ns="region_growing_multiple_plane_segmentation">
+      <rosparam>
+        max_size: 50000
+        minsize: 1000
+        angular_threshold: 0.1
+        distance_threshold: 0.05
+        max_curvature: 0.4
+        cluster_tolerance: 0.15
+        ransac_refine_outlier_distance_threshold: 0.01
+      </rosparam>
+    </group>
+    <group ns="polygon_flipper">
+      <rosparam>
+        sensor_frame: head_root
+      </rosparam>
+    </group>
+    <group ns="multi_plane_extraction">
+      <rosparam>
+        use_sensor_frame: true
+        sensor_frame: head_root
+        use_indices: false
+        min_height: -0.5
+        max_height: -0.02
+        magnify: -0.01
+      </rosparam>
+    </group>
+    <group ns="remove_small_noises">
+      <rosparam>
+        radius_search: 0.05
+        min_neighbors: 20
+      </rosparam>
+    </group>
+    <group ns="euclidean_clustering">
+      <rosparam>
+        tolerance: 0.04
+        max_size: 25000
+        min_size: 5
+      </rosparam>
+    </group>
+    <group ns="cluster_point_indices_decomposer">
       <rosparam>
         align_boxes: true
         use_pca: true
-        publish_clouds: false
-        publish_tf: false
       </rosparam>
-    </node>
-
-    <node pkg="jsk_pcl_ros" type="box_array_to_box.py"
-          name="box_array_to_box">
-      <remap from="bounding_box_array" to="cluster_decomposer_one/boxes" />
-    </node>
-    <node pkg="nodelet" type="nodelet" name="icp_registration"
-          args="standalone jsk_pcl/ICPRegistration">
-      <remap from="~input" to="filtered_cloud/output" />
-      <remap from="~input_box" to="bounding_box" />
-      <remap from="~input_reference" to="template_normal_concat/output" />
+    </group>
+    <group ns="filter_small_boxes">
       <rosparam>
-        align_box: true
-        use_normal: false
-        max_iteration: 10000
-        correspondence_distance: 0.1
-        transform_epsilon: 0.001
-        euclidean_fittness_epsilon: 0.001
-        rotation_epsilon: 0.002
-        use_flipped_initial_pose: false
+        use_x_dimension: true
+        x_dimension_min: 0.05
+        x_dimension_max: 0.5
+        use_y_dimension: true
+        y_dimension_min: 0.05
+        y_dimension_max: 0.5
+        use_z_dimension: true
+        z_dimension_min: 0.05
+        z_dimension_max: 0.5
       </rosparam>
-    </node>
-    <!-- <node pkg="nodelet" type="nodelet" name="pointcloud_server" -->
-    <!--       args="load jsk_pcl/PointcloudDatabaseServer /$(arg MANAGER)"> -->
-    <node pkg="nodelet" type="nodelet" name="pointcloud_server_org"
-          args="standalone pcl/PCDReader">
-      <rosparam subst_value="true">
-        publish_rate: 1
-        tf_frame: "map"
-        filename: "$(find drc_task_common)/pcds/drill.pcd"
-#        filename: "$(env HOME)/template.pcd"
-      </rosparam>
-    </node>
-    <node pkg="nodelet" type="nodelet" name="pointcloud_server"
-          args="standalone pcl/VoxelGrid">
-      <remap from="~input" to="pointcloud_server_org/output"/>
-      <rosparam subst_value="true">
-        leaf_size: 0.01
-      </rosparam>
-    </node>
-    <!-- apply normal estimation to output of db -->
-    <node pkg="nodelet" type="nodelet" name="template_normal_estimation"
-	  args="standalone pcl/NormalEstimation">
-      <remap from="~input" to="pointcloud_server/output" />
+    </group>
+    <group ns="boundingbox_clipper">
       <rosparam>
-        k_search: 0
-        radius_search: 0.1
-        spatial_locator: 1
+        use_multiple_attention: true
+        radius_search: 0.05
+        min_neighbors: 20
       </rosparam>
-    </node>
-    <node pkg="jsk_pcl_ros" type="normal_concatenater" name="template_normal_concat">
-      <remap from="~input" to="pointcloud_server/output" />
-      <remap from="~normal" to="template_normal_estimation/output" />
-      <rosparam>
-        use_async: true
-      </rosparam>
-    </node>
-    <node pkg="jsk_topic_tools" type="static_transform_pose_stamped" name="static_transform_pose_stamped"
-          args="0 0 -0.12 0 0 0 /$(arg DRILL_RECOGNITION_NAMESPACE)/icp_registration/output_pose /$(arg DRILL_RECOGNITION_NAMESPACE)/icp_registration/output_pose_origin"
-          />
-    <node pkg="jsk_topic_tools" type="snapshot" name="snapshot">
-      <remap from="~input" to="icp_registration/output_pose_origin"/>
+    </group>
+    <group ns="flip_cylinder_coords">
+    </group>
+    <group ns="snapshot">
       <rosparam>
         latch: true
       </rosparam>
+    </group>
+    <node pkg="drc_task_common"
+          type="filter_bbox_position.py"
+          name="filter_by_position">
+      <remap from="~input" to="filter_small_boxes/output_box"/>
+      <rosparam>
+        frame_id: ground
+        min_z: 0.7
+        max_z: 1.5
+      </rosparam>
+    </node>
+    <node pkg="drc_task_common"
+          type="static_transform_bounding_box_array.py"
+          name="static_transform_bounding_box_array"
+          >
+      <rosparam>
+        transform: [0, 0, 0, 3.14, 0, 0]
+      </rosparam>
+      <remap from="~input" to="filter_by_position/output" />
+    </node>
+    <node pkg="drc_task_common"
+          name="standing_drill_detector"
+          type="standing_drill_detector"
+          output="screen">
+      <remap from="~input" to="remove_small_noises/output" />
+      <!-- <remap from="~input" to="precise_remove_small_noises/output"
+           /> -->
+      <remap from="~input/box_array"
+             to="boundingbox_clipper/output/box_array"/>
+      <remap from="~input/indices"
+             to="boundingbox_clipper/output/cluster_point_indices"/>
+      <rosparam>
+        optimistic: true
+        cylinder_max_iterations: 1000
+        cylinder_min_radius: 0.02
+        cylinder_max_radius: 0.04
+      </rosparam>
     </node>
 
+    <node pkg="jsk_topic_tools"
+          name="flip_cylinder_coords"
+          type="static_transform_pose_stamped"
+          args="0 0 0 0 3.14 0 standing_drill_detector/output/pose drill_pose"
+          />
   </group>
 </launch>

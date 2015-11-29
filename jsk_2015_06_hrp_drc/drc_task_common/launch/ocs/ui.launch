@@ -1,15 +1,49 @@
 <launch>
   <!-- REQUIRED: INPUT_IMAGE input image topic -->
-  <arg name="INPUT_IMAGE" />
+  <arg name="INPUT_IMAGE" default="/ocs/communication/image_rect_color"/>
   <arg name="INPUT_PANORAMA_IMAGE" default="/ocs/communication/panorama_image"/>
-  <arg name="INPUT_IMAGE_WIDTH_SCALE" />
-  <arg name="INPUT_IMAGE_HEIGHT_SCALE" />
+  <arg name="INPUT_IMAGE_WIDTH_SCALE" default="/ocs/communication/image_width_scale"/>
+  <arg name="INPUT_IMAGE_HEIGHT_SCALE" default="/ocs/communication/image_height_scale"/>
   <arg name="INPUT_PANORAMA_IMAGE_WIDTH_SCALE" default="/ocs/communication/panorama_width_scale"/>
   <arg name="INPUT_PANORAMA_IMAGE_HEIGHT_SCALE" default="/ocs/communication/panorama_height_scale"/>
+  <arg name="UI_FILE" default="rqt_ui.perspective" />
+  <remap from="/tf" to="/ocs/tf" />
+  <remap from="/joint_states" to="/ocs/joint_states" />
+  <remap from="/robot_description" to="/ocs/robot_description" />
+
+  <include file="$(find drc_task_common)/launch/ocs/models/$(env ROBOT).launch" />
+
   <node pkg="rqt_gui" type="rqt_gui" name="rqt_image_view_button"
-        args="--perspective-file $(find drc_task_common)/config/rqt_ui.perspective">
+        args="--perspective-file $(find drc_task_common)/config/$(arg UI_FILE)">
     <rosparam>
-      layout_file: "package://drc_task_common/config/ocs_ui_button_layout.yaml"
+      service_button_stair_layout_file: "package://drc_task_common/config/ocs_ui_stair_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_button_layout_file: "package://drc_task_common/config/ocs_ui_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_optional_button_layout_file: "package://drc_task_common/config/ocs_ui_optional_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_radio_button_layout_file: "package://drc_task_common/config/ocs_ui_radio_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_optional_radio_button_layout_file: "package://drc_task_common/config/ocs_ui_optional_radio_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_optional_drill_button_layout_file: "package://drc_task_common/config/ocs_ui_optional_drill_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_recognition_radio_button_layout_file: "package://drc_task_common/config/ocs_ui_recognition_radio_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_req_ik_button_layout_file: "package://drc_task_common/config/ocs_ui_req_ik_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_req_ik_radio_button_layout_file: "package://drc_task_common/config/ocs_ui_req_ik_radio_button_layout.yaml"
+    </rosparam>
+    <rosparam>
+      service_button_jvrc_cheat_file: "package://drc_task_common/config/ocs_ui_jvrc_cheat.yaml"
     </rosparam>
   </node>
   <group ns="image_rect">
@@ -41,9 +75,6 @@
   </group>
   
   <!-- visualize state -->
-  <node pkg="image_view" type="image_view" name="state_viewer">
-    <remap from="image" to="state_image"/>
-  </node>
   <node pkg="jsk_perception" type="image_publisher.py" name="state_image_publisher" respawn="true">
     <remap from="~output" to="state_image"/>
     <rosparam>
@@ -72,6 +103,5 @@
       suffix: " Sec before"
     </rosparam>
   </node>
-
 </launch>
 

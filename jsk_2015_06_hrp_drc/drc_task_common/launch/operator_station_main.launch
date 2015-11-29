@@ -6,10 +6,11 @@
   <!-- 
        Remap tf and joint_states for ocs settings
   -->
-  <!-- temporary 2015/03/02 -->
-  <!-- <remap from="/tf" to="/ocs/tf" /> -->
-  <!-- <remap from="/joint_states" to="/ocs/joint_states" /> -->
-  <!-- <remap from="/robot_description" to="/ocs/robot_description" /> -->
+  <remap from="/tf" to="/ocs/tf" />
+  <remap from="/joint_states" to="/ocs/joint_states" />
+  <remap from="/robot_description" to="/ocs/robot_description" />
+
+  <arg name="ik_server_launch" default="hrp2jsknts-ik-server.launch" />
   
   <arg name="FC_IP" default="localhost" />
   <arg name="OCS_IP" default="localhost" />
@@ -17,131 +18,24 @@
   <arg name="USE_COM" default="true" />
   
   <arg name="default_frame_id" default="odom_on_ground" />
+  <arg name="robot_model_config" default="$(find drc_task_common)/config/robot_interactive_marker.yaml" />
   <arg name="INPUT_IMAGE" value="/ocs/communication/image_rect_color" />
   <arg name="INPUT_IMAGE_WIDTH_SCALE" value="/ocs/communication/image_width_scale" />
   <arg name="INPUT_IMAGE_HEIGHT_SCALE" value="/ocs/communication/image_height_scale" />
-  <arg name="robot_name" default="hrp2jsknts" />
-  <arg name="ROBOT_URDF_MODEL" default="$(find hrpsys_ros_bridge_tutorials)/models/HRP2JSKNTS.urdf.xacro" />
-  <arg name="robot_model_config" default="$(find drc_task_common)/config/hrp2_interactive_marker.yaml" />
-  <arg name="ik_server_launch" default="hrp2jsknts-ik-server.launch" />
-  <arg name="trackball_head_launch" default="false" />
   <arg name="USE_RVIZ_UI" default="true" />
-  <include file="$(find drc_task_common)/launch/ocs/ui.launch">
-    <arg name="INPUT_IMAGE" value="$(arg INPUT_IMAGE)" />
-    <arg name="INPUT_IMAGE_WIDTH_SCALE" value="$(arg INPUT_IMAGE_WIDTH_SCALE)" />
-    <arg name="INPUT_IMAGE_HEIGHT_SCALE" value="$(arg INPUT_IMAGE_HEIGHT_SCALE)" />
-  </include>
-
-  <node pkg="drc_task_common" type="ocs-executive.l" name="ocs_executive" output="screen">
-  </node>
-  <node pkg="drc_task_common" type="ocs-basic-info-subscriber.l" name="ocs_basic_info_publisher" output="screen">
-  </node>
   
-  <!-- tf -->
-  <group ns="ocs">
-    <arg name="CALIB_FILE" value="hrp2017_multisense_calib_20150208.yaml" />
-    <param name="robot_description" command="$(find euscollada)/scripts/urdf_patch.py patch $(find hrpsys_ros_bridge_tutorials)/models/HRP2JSKNTS_WH_SENSORS.urdf $(find jsk_hrp2_ros_bridge)/calib_data/$(arg CALIB_FILE)" />
-    <node pkg="robot_state_publisher" type="robot_state_publisher" name="ocs_robot_state_publisher">
-      <remap from="/joint_states" to="/ocs/joint_states" />
-      <remap from="/tf" to="/ocs/tf"/>
-    </node>
-    <node pkg="dynamic_tf_publisher" type="tf_publish.py" name="dynamic_tf_publisher">
-      <remap from="/tf" to="/ocs/tf" />
-      <remap from="/set_dynamic_tf" to="/ocs/set_dynamic_tf" />
-      <remap from="/assoc_tf" to="/ocs/assoc_tf" />
-      <remap from="/publish_tf" to="/ocs/publish_tf" />
-      <remap from="/dissoc_tf" to="/ocs/dissoc_tf" />
-      <remap from="/delete_tf" to="/ocs/delete_tf" />
-      <rosparam>
-        use_cache: false
-      </rosparam>
-    </node>
-    <node pkg="jsk_topic_tools" type="topic_buffer_client" name="joint_states_buffer_client" output="log">
-      <remap from="/update" to="/sample_topic_buffer_server/update"/>
-      <remap from="/ocs/joint_states_decompressed_update" to="/ocs/joint_states_decompressed"/>
-      <remap from="/ocs/joint_states_decompressed_buffered" to="/ocs/joint_states"/>
-      <rosparam>
-        topics: ["/ocs/joint_states_decompressed"]
-        fixed_rate: 0.01
-        use_service: false
-      </rosparam>
-    </node>
-    <!-- is it required? -->
-    <node pkg="jsk_topic_tools" type="topic_buffer_client" name="point_cloud_buffer_client" output="log"
-          if="false">
-      <remap from="/update" to="/sample_topic_buffer_server/update"/>
-      <remap from="/ocs/communication/point_cloud_update" to="/ocs/communication/point_cloud"/>
-      <rosparam>
-        topics: ["/ocs/communication/point_cloud"]
-        fixed_rate: 0.1
-        use_service: false
-      </rosparam>
-    </node>
-  </group>
+  <include file="$(find drc_task_common)/launch/ocs/ui.launch">
+  </include>
+  <include file="$(find drc_task_common)/launch/ocs/ocs_executive.launch">
+  </include>
+  <include file="$(find drc_task_common)/launch/ocs/ocs_misc.launch">
+  </include>
   <!-- communication -->
   <include if="$(arg USE_COM)"
            file="$(find drc_com_common)/launch/operator_station_com.launch">
     <arg name="FC_IP" value="$(arg FC_IP)" />
     <arg name="OCS_IP" value="$(arg OCS_IP)" />
   </include>
+  <include file="$(find drc_task_common)/launch/ocs/ocs_rviz.launch" if="$(arg USE_RVIZ_UI)"/>
 
-  <group if="$(arg USE_RVIZ_UI)">
-    <node pkg="drc_task_common" type="rviz_status.py" name="rviz_status">
-    </node>
-    <!-- robot motion -->
-    <include file="$(find drc_task_common)/launch/robot_motion.launch" >
-      <arg name="default_frame_id" default="$(arg default_frame_id)" />
-      <arg name="robot_name" value="$(arg robot_name)" />
-      <arg name="ik_server_launch" default="$(arg ik_server_launch)" />
-    </include>
-
-    <!-- object model -->
-    <include file="$(find drc_task_common)/launch/transformable_model.launch" >
-      <arg name="default_frame_id" default="$(arg default_frame_id)" />
-    </include>
-
-    <!-- robot model -->
-    <include file="$(find drc_task_common)/launch/robot_model.launch" >
-      <arg name="default_frame_id" default="$(arg default_frame_id)" />
-      <arg name="robot_model_config" default="$(arg robot_model_config)" />
-      <arg name="ROBOT_URDF_MODEL" default="$(arg ROBOT_URDF_MODEL)" />
-    </include>
-
-    <!-- teleop device -->
-    <include file="$(find drc_task_common)/launch/teleop_device.launch" >
-      <arg name="default_frame_id" default="$(arg default_frame_id)" />
-      <arg name="trackball_head_launch" default="$(arg trackball_head_launch)" />
-    </include>
-
-    <!-- teleop interface -->
-    <include file="$(find drc_task_common)/launch/teleop_interface.launch" />
-
-    <!-- remote server -->
-    <include file="$(find drc_task_common)/launch/remote_server.launch">
-      <arg name="robot_name" value="$(arg robot_name)" />
-    </include>
-
-    <!-- rviz -->
-    <node pkg="rviz" type="rviz" name="operator_rviz" args="-d $(find drc_task_common)/config/drc_task_common.rviz"
-          respawn="true"/>
-
-    <group if="false">
-
-      <include if="false"
-               file="$(find jsk_hrp2_ros_bridge)/launch/hrp2017_local.launch" />
-
-      <!-- data server -->
-      <include file="$(find drc_task_common)/launch/manipulation_data_processor.launch"/>
-
-      <group>
-        <remap from="robotsound" to="robotsound_ocs" />
-
-        <!-- google translation talk -->
-        <include file="$(find sound_play)/soundplay_node.launch" />
-
-        <!-- timer talker -->
-        <node pkg="drc_task_common" name="timer_talker" type="timer_talker.py" args="" output="screen" />
-      </group>
-    </group>
-  </group>
 </launch>
