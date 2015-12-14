@@ -1,24 +1,36 @@
+;; Define global box size (x,y,z)
+(setq *box-x-size* 598.0)
+(setq *box-y-size* 480.0)
+(setq *box-z-size* 710.0)
+
 (defclass wooden-box :super cascaded-link :slots (parts))
 
 (defmethod wooden-box
-  (:init (&key (x-size 598.0) (y-size 480.0) (z-size 710.0)
-               (x-label 198.0) (y-label 250.0) (z-label 5.0) (front-to-label 302.0))
+  (:init (&key (x-size *box-x-size*) (y-size *box-y-size*) (z-size *box-z-size*)
+               (x-label 198.0) (y-label 250.0) (z-label 5.0) (x-underline 15.0) (z-underline 10.0) (front-to-label 302.0))
     (send-super :init)
-    (let* (box0 link0)
+    (let* (box0 sift-label label-underline link0)
       ;; make one box named box0 and marker named sift-label
       (setq box0 (make-cube x-size y-size z-size :name :box0))
       (send box0 :set-color (float-vector 0 1 1))
       (gl::transparent box0 0.8)
       (setq sift-label (make-cube x-label y-label z-label :name :sift-label))
       (send sift-label :set-color (float-vector 1 0 0))
+      (gl::transparent sift-label 0.7)
+      (setq label-underline (make-cube x-underline y-label z-underline :name :label-underline))
+      (send label-underline :set-color (float-vector 1 1 0))
       ;; place one box to ground and sift-label on box
       (send box0 :translate (float-vector 0 0 (/ z-size 2)) :world)
       (send sift-label :translate (float-vector (- front-to-label (/ x-size 2))
                                                 0.0
                                                 (+ z-size (/ z-label 2))) :world)
+      (send label-underline :translate (float-vector (- (- front-to-label (/ x-size 2)) (- (/ x-label 2) (/ x-underline 2)))
+                                                0.0
+                                                (+ z-size (/ z-underline 2))) :world)
       ;; set parts list to assoc others
-      (send sift-label :assoc box0)
-      (setq parts (list sift-label box0))
+      (send box0 :assoc sift-label)
+      (send sift-label :assoc label-underline)
+      (setq parts (list box0 sift-label label-underline))
       ;; make one link named link0
       (setq link0 (instance bodyset-link :init (make-cascoords) :bodies parts))
       ;; assoc root link to self

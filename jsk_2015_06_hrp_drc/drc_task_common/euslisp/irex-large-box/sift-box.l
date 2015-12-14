@@ -44,7 +44,7 @@
           ;; modify label position offset for box model
           (send crds :transform *box-label-offset*)
           (set-primitive-marker-dimensions
-           :x 598.0 :y 480.0 :z 710.0 :name "wooden_box"
+           :x *box-x-size* :y *box-y-size* :z *box-z-size* :name "wooden_box"
            )
           ;; (set-primitive-marker-pose
           ;;  (send (send crds :copy-worldcoords) :translate (float-vector 0 0 355)) "ground" :name "wooden_box"
